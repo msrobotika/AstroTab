@@ -1,0 +1,22 @@
+<resources>
+    <string name="ui_close">Cerrar</string>
+    <string name="home_clocks">UTC %1$s   ·   TSL %2$s\n%3$s</string>
+    <string name="home_target">%1$s · %2$d\n%3$s</string>
+    <string name="sky_guide">%1$s\n%2$d° alt · %3$d° az\n%4$s</string>
+    <string name="sky_below">Bajo horizonte</string>
+    <string name="sky_aligned">✓ Altura alineada</string>
+    <string name="sky_up">↑ Sube %1$d°</string>
+    <string name="sky_down">↓ Baja %1$d°</string>
+    <string name="moon_short">%1$d %% · ↑ %2$s · ↓ %3$s</string>
+    <string name="night_short">%1$s · oscuridad %2$s</string>
+    <string name="night_window_short">Mejor ventana %1$s–%2$s</string>
+    <string name="night_no_score">Sin nota meteorológica</string>
+    <string name="app_name">AstroTab</string>
+    <string name="header_status">%1$s · %2$s\n%3$s%4$s</string>
+    <string name="latitude_value">Latitud: %1$s°</string>
+    <string name="longitude_value">Longitud: %1$s°</string>
+    <string name="session_ready">Lista para empezar</string>
+    <string name="pro_field_value">%1$s: %2$s</string>
+    <string name="pro_target_required">Indica el objeto.</string>
+    <string name="pro_not_saved">No guardada: %1$s</string>
+</resources>

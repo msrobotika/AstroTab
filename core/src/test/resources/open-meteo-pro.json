@@ -1,0 +1,11 @@
+{
+  "utc_offset_seconds": 0,
+  "hourly_units": {"wind_speed_10m":"km/h","wind_speed_250hPa":"km/h","visibility":"m","pressure_msl":"hPa"},
+  "hourly": {
+    "time":["2026-11-06T22:00","2026-11-06T23:00"],
+    "cloud_cover":[50,10], "cloud_cover_low":[20,5], "cloud_cover_mid":[30,0], "cloud_cover_high":[40,5],
+    "precipitation_probability":[15,null], "temperature_2m":[8,7], "dew_point_2m":[7,5],
+    "relative_humidity_2m":[90,85], "wind_speed_10m":[12,8], "wind_gusts_10m":[22,15],
+    "visibility":[18000,20000], "pressure_msl":[1015,1016], "wind_speed_250hPa":[150,null]
+  }
+}

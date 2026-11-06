@@ -1,0 +1,29 @@
+> Histórico saneado para distribución pública. No acredita una nueva ejecución; registros, capturas y fuentes de trabajo citados pueden estar excluidos. Verificación vigente: specs/010-public-release/verification.md.
+
+# Fuentes y decisiones · 007
+
+## Procedencia reproducible
+
+Referencia oficial Vallado AIAA-2006-6753.zip y HTML NASA guardados en sources/. Descargas realizadas por HTTPS validado con Node; curl Schannel no pudo abrir credenciales en este entorno (sin desactivar TLS). No hubo consulta meteorológica, IP ni hardware. Formatos TLE ISS/visual inspeccionados y archivados únicamente como fixtures de test. El APK incluye tabla NASA y raíz CA, no TLE de prueba ni caché de observaciones.
+
+SGP4: fuente Java de Shawn E. Gano 2009 incluida en el ZIP oficial. Port mecánico a Kotlin mediante tools/port-sgp4.cjs, parámetros mutables convertidos en variables locales, DoubleArray, control de flujo Kotlin, WGS72 inmutable precalculado. Las ramas dpper/dscom/dsinit/dspace/initl/sgp4init/sgp4/gstime se conservan. Modo «i» igual al archivo oficial tcppver.out (usar «a» produce discrepancias de Lyddane, detectadas en 23599). 491 estados de 23 satélites seleccionados, incluido 00005, tolerancias 1 m y 1 mm/s. No se sustituyó por un modelo kepleriano. Casos de TLE deliberadamente inválidos y decaimiento de la suite original no se presentan como órbitas utilizables.
+
+## Pasos y precisión
+
+Estados TEME en km/km/s. Observador elipsoide WGS84 a altitud cero; giro GMST de Vallado, sin EOP/UT1/polar motion. Sol del motor existente, umbra cónica terrestre con radio solar 695700 km y distancia nominal 1 UA. Visible: altura positiva, iluminado y Sol del observador <−6°. No implica detectabilidad bajo nubes ni magnitud suficiente; no se inventa magnitud.
+
+SGP4 se evalúa cada 360 s para órbitas LEO casi circulares (e<0,03, periodo<225 min, perigeo kepleriano estimado >250 km), 120 s en las demás. Posición/velocidad se interpolan mediante Hermite cúbica. Observador/Sol: anclas de 120 s, interpoladas a 30 s y a las consultas de detalle. Barrido de cercanía al horizonte con margen −6°, detalles a 30 s, máximos muestreados a 5 s y extremos de tramos visibles refinados a <1 s de resolución numérica. Se contrasta ISS con SGP4 directo y altura con observador calculado sin interpolación; esta resolución no es exactitud física. TLE viejos y maniobras dominan el error. Pasos rasantes o fragmentos iluminados de duración inferior a la malla de 30 s pueden escapar; no se garantiza exhaustividad para esos casos. Inicio/fin pueden ser sombra o crepúsculo, no solo horizonte. Resultados parciales y caché en memoria por día/lugar/contenido TLE; previsión contada desde el instante de cálculo. No depende de noche/altura mínima de Messier.
+
+Benchmark en SatelliteTest con 150 TLE visual, cinco días y observador de prueba. PC: Intel Xeon E5-2650 v2 2,60 GHz, JVM 17. Factor ARMv7 lento adoptado: ×15; es hipótesis, no calibración de tablet. Se publican primera llamada y mediana de tres cálculos completos posteriores: los posteriores vuelven a propagar todo, no leen la caché. Separan calentamiento JIT de coste sostenido; Android6 usa ART/AOT, cuya equivalencia con esta mediana es una hipótesis explícita. Resultado en benchmark.txt. El objetivo <5 s puede cumplirse en la estimación sostenida sin cumplirse en la extrapolación de primera llamada; no presentarlo como cumplimiento incondicional. Caché de aplicación evita repetir al navegar. El render no propaga órbitas.
+
+## Calendario
+
+45 filas NASA: 22 solares y 23 lunares, años 2026–2035 inclusivos. UTC=TD−ΔT de la fila, sin confundir escala temporal. tools/import-eclipses.cjs reproduce events/eclipses.tsv desde HTML archivado. Tipo y máximo son de NASA; altura es del motor existente, con paralaje para Luna. Eclipse lunar: sobre horizonte en máximo global → visible si condiciones permiten. Solar: altura informa si el Sol está arriba; se declara visibilidad local por confirmar porque no se han añadido elementos besselianos. Es una limitación explícita de la comprobación solicitada por altura, que no basta para clasificar la franja de totalidad.
+
+Fases: raíces de longitud lunar−solar; perigeo/apogeo: extremos de distancia lunar; conjunciones: mínimos de separación angular geocéntrica <5°; oposiciones: diferencia de longitudes eclípticas de 180°; elongaciones: máximos de separación al Sol para Mercurio/Venus. Malla 3 h y refinado 1 min. Modelo Schlyter/AstroCYD existente, exactitud orientativa de horas y del orden de 1° en separaciones, sin refracción/nutación ni precisión de almanaque. Meteoros conservan máximos climatológicos IMO, sin hora anual exacta; se rotulan como fecha aproximada.
+
+## Persistencia e integración
+
+Perfiles: máximo 32, nombres/IDs limitados, sensor y montura/seguimiento; migración del equipo anterior sin cambiar valores. Todas las herramientas consultan settings.equipment, que resuelve el perfil activo. Sesiones: máximo 50, 110 objetos únicos por sesión, caché binaria acotada con JSON, conservación de copia anterior. Propuesta dentro de ventanas de oscuridad y altura; sin hueco no se programa. Exposición/pausa vienen de Sesión; integración real y tomas estimadas explícitas. Advertencia de meridiano para ecuatorial, Luna según factor del plan y sin seguimiento. No controla cámara. Al terminar temporizador planificado se registra una única entrada; parada manual no se hace pasar por finalización. Error de escritura conserva entrada pendiente para reintentar.
+
+Alarmas: datos/política en core, adaptador Android con PendingIntent explícito e inmutable y receiver no exportado. setExact RTC_WAKEUP API23; en API31+ sin autorización exacta usa set + comprobación en primer plano sin pedir permiso. Sin BOOT_COMPLETED, reprogramación al abrir app. Aviso pendiente recuperable en los siguientes 30 min. Kp solo con datos actuales observados/estimados, sin sondeo nuevo en segundo plano. No se atribuye fiabilidad física a Robolectric.
