@@ -1,4 +1,4 @@
-# AstroTab 0.7.1
+# AstroTab 0.7.2
 
 **Una tablet vieja que iba a la basura, con una vida nueva: asistente de astrofotografía y fotografía nocturna.**
 
@@ -33,6 +33,8 @@ Capturas reales de la pantalla de una Alcatel Pixi 4 7" (Android 6) con AstroTab
 ## Requisitos
 
 Android **6.0 o posterior** (API 23), pantalla preferentemente horizontal. Probado en una **Alcatel Pixi 4 7 pulgadas, modelo 8063, con 1 GB de RAM** (unos 30 MB de memoria en uso). El modo rojo nocturno en el campo, el sensor de inclinación y las alarmas con la tablet en reposo aún no se han probado de noche.
+
+Desde la 0.7.2, AstroTab se muestra encima de la pantalla de bloqueo, que en Android 6 no gira: al encender la tablet aparece directamente en horizontal. Un bloqueo por deslizamiento desaparece; un PIN sigue protegiendo todo lo que no sea AstroTab.
 
 No necesita Google Play Services, brújula ni GPS. Introduce la ubicación manualmente en Ajustes y revisa fecha, hora y zona horaria. Sin ubicación guardada, la app no inventa una. El acelerómetro es opcional y solo ayuda con la inclinación; el rumbo se ajusta a mano.
 

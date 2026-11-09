@@ -270,6 +270,7 @@ class ScreensTest {
             assertTrue(views(root).filterIsInstance<Button>().any { it.text=="Número de luces: 31" })
             click(root,"Iniciar"); layout(root)
             assertTrue(activity.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON!=0)
+            @Suppress("DEPRECATION") assertTrue(activity.window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED!=0)
             assertTrue(views(root).filterIsInstance<TextView>().any { it.text.contains("TOMA") })
             click(root,"Parar")
             assertTrue(views(root).filterIsInstance<TextView>().any { it.text=="Sesión finalizada" })

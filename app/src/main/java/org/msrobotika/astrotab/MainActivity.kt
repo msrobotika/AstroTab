@@ -150,9 +150,17 @@ class MainActivity : Activity(), SensorEventListener {
         accelerometer=sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         offset=savedInstanceState?.getLong("offset") ?: 0
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        showOverLockScreen()
         buildShell()
         if(Build.VERSION.SDK_INT>=33) registerModernBack()
         worker.execute { repository.load(settings.location); satelliteRepository.load(); runOnUiThread { if(!isDestroyed) {show(screen);checkAlarms();autoRefreshSatellites()} } }
+    }
+    // The system lock screen stays portrait on Android 6; AstroTab covers it so the tablet wakes straight into landscape.
+    // A swipe lock is removed; a PIN lock still guards everything outside AstroTab.
+    @Suppress("DEPRECATION")
+    private fun showOverLockScreen() {
+        if(Build.VERSION.SDK_INT>=27) setShowWhenLocked(true)
+        else window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
     }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); outState.putLong("offset",offset) }
     @Suppress("DEPRECATION")

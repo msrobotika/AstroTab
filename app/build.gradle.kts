@@ -8,8 +8,8 @@ android {
         applicationId = "org.msrobotika.astrotab"
         minSdk = 23
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.7.1"
+        versionCode = 10
+        versionName = "0.7.2"
         ndk { abiFilters += "armeabi-v7a" }
     }
     signingConfigs { getByName("debug") { storeFile = rootProject.file(".gradle/astrotab-debug.keystore") } }
