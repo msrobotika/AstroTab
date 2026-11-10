@@ -52,7 +52,7 @@ function readMilkyWay(buf) {
 async function loadCatalogs() {
   const [a, b, c] = await Promise.all(['data/stars.bin', 'data/milkyway.bin', 'data/messier.tsv'].map(u => fetch(u)));
   stars = readStars(await a.arrayBuffer()); mw = readMilkyWay(await b.arrayBuffer());
-  messier = (await c.text()).trim().split('\n').map(l => { const p = l.split('\t');
+  messier = (await c.text()).trim().split(/\r?\n/).map(l => { const p = l.split('\t');
     return { id: p[0], ra: +p[1], dec: +p[2], type: p[3], mag: p[4] ? +p[4] : null, size: p[5], name: NAMES[p[0]] || '', ngc: p[8] }; });
 }
 
