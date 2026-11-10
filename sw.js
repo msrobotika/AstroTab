@@ -1,7 +1,8 @@
 // Funciona sin conexión: la app y los catálogos se guardan; la previsión de nubes va siempre a la red.
-const CACHE = 'astrotab-web-v1';
-const FILES = ['./', 'index.html', 'style.css', 'astro.js', 'app.js', 'manifest.webmanifest',
-  'data/stars.bin', 'data/milkyway.bin', 'data/messier.tsv', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'astrotab-web-v2';
+const FILES = ['./', 'index.html', 'style.css', 'astro.js', 'pro.js', 'sats.js', 'app.js', 'features.js', 'vendor/satellite.min.js',
+  'manifest.webmanifest', 'data/stars.bin', 'data/milkyway.bin', 'data/messier.tsv', 'data/eclipses.tsv',
+  'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys()
   .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));

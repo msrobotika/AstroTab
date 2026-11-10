@@ -86,13 +86,13 @@ async function fetchWeather(force) {
   if (!place || !useNet || !navigator.onLine) return;
   if (!force && weather && weather.key === placeKey() && Date.now() - weather.fetched < 2 * HOUR) return;
   const [la, lo] = placeKey().split(',');
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,temperature_2m,dew_point_2m,wind_speed_10m&wind_speed_unit=kmh&timezone=UTC&forecast_days=3`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,temperature_2m,dew_point_2m,wind_speed_10m,wind_speed_250hPa&wind_speed_unit=kmh&timezone=UTC&forecast_days=7`;
   try {
     const r = await fetch(url); if (!r.ok) throw Error('HTTP ' + r.status);
     const j = await r.json(), h = j.hourly;
     weather = { key: placeKey(), fetched: Date.now(), hours: h.time.map((t, i) => ({ time: Date.parse(t + 'Z'), cover: h.cloud_cover[i],
       low: h.cloud_cover_low[i], mid: h.cloud_cover_mid[i], high: h.cloud_cover_high[i], rain: h.precipitation_probability[i],
-      t: h.temperature_2m[i], dp: h.dew_point_2m[i], wind: h.wind_speed_10m[i] })) };
+      t: h.temperature_2m[i], dp: h.dew_point_2m[i], wind: h.wind_speed_10m[i], jet: h.wind_speed_250hPa ? h.wind_speed_250hPa[i] : null })) };
     store.set('weather', weather);
   } catch (e) { weather = weather && weather.key === placeKey() ? weather : null; $('wxStatus').textContent = 'Sin conexión con Open-Meteo: ' + e.message; }
 }
@@ -191,6 +191,7 @@ function renderSky() {
     skyHits.push({ x: p[0], y: p[1], label: n, extra: `mag ${pl.mag.toFixed(1)} · ${Math.round(p[2].alt)}°` }); });
   const mo = Astro.moon(d).eq, pm = proj(mo.ra, mo.dec);
   if (pm) { g.fillStyle = '#e8e2c8'; g.beginPath(); g.arc(pm[0], pm[1], 7, 0, 7); g.fill(); skyHits.push({ x: pm[0], y: pm[1], label: 'Luna', extra: `${Math.round(Astro.moonPhase(d).illumination * 100)} % · ${Math.round(pm[2].alt)}°` }); }
+  if (typeof drawSkyExtras === 'function') drawSkyExtras(g, proj, skyTime);  // features.js: búsqueda, encuadre, satélites
   g.restore();
   g.strokeStyle = '#253249'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
   g.fillStyle = '#94a7c1'; g.font = '13px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -223,7 +224,7 @@ function renderObjects() {
     let best = -90, bestT = from; for (let t = from; t <= to; t += 20 * 60000) { const a = horizonAt(o.ra, o.dec, t).alt; if (a > best) { best = a; bestT = t; } }
     return { o, best, bestT, now: horizonAt(o.ra, o.dec, now) };
   }).filter(r => !onlyVisible || r.best > 20).sort((a, b) => b.best - a.best);
-  $('objList').innerHTML = rows.map(r => `<li><span><b>${r.o.id}</b>${r.o.name ? ' · ' + r.o.name : ''}<br><span class="tag">${TYPE[r.o.type] || ''} · mag ${r.o.mag ?? '—'} · ${r.o.ngc}</span></span>` +
+  $('objList').innerHTML = rows.map(r => `<li data-id="${r.o.id}" tabindex="0" role="button"><span><b>${r.o.id}</b>${r.o.name ? ' · ' + r.o.name : ''}<br><span class="tag">${TYPE[r.o.type] || ''} · mag ${r.o.mag ?? '—'} · ${r.o.ngc}</span></span>` +
     `<span style="text-align:right"><span class="${r.best > 45 ? 'good' : r.best > 20 ? 'mid' : 'bad'}">${Math.round(r.best)}°</span> a las ${fmt(r.bestT)}<br>` +
     `<span class="tag">ahora ${Math.round(r.now.alt)}° ${compass(r.now.az)}</span></span></li>`).join('') || '<li class="tag">Ningún objeto con esos filtros.</li>';
 }
@@ -244,24 +245,24 @@ function renderWeather() {
 }
 
 // ---------- Pestaña MÁS: exposición (regla 500 y NPF simplificada) ----------
-function renderExposure() {
-  const f = +$('focIn').value, n = +$('apIn').value, crop = +$('cropIn').value || 1, p = +$('pixIn').value;
-  if (!(f > 0 && n > 0 && p > 0)) { $('expOut').textContent = 'Revisa los datos.'; return; }
-  const r500 = 500 / (f * crop), npf = (35 * n + 30 * p) / f;
-  $('expOut').innerHTML = `Regla 500: <b>${r500.toFixed(1)} s</b><br>NPF (más estricta): <b>${npf.toFixed(1)} s</b>`;
-}
+// La exposición depende del equipo: la calcula features.js con Optics (regla 500 y NPF de Android).
+function renderExposure() { if (typeof renderEquipment === 'function') renderEquipment(); }
 
 // ---------- Ubicación y arranque ----------
 function showPlace() {
   $('placeLabel').textContent = place ? `${place.name || 'Mi ubicación'} · ${place.lat.toFixed(2)}°, ${place.lon.toFixed(2)}°` : 'Sin ubicación: ve a Más';
   if (place) { $('latIn').value = place.lat; $('lonIn').value = place.lon; $('nameIn').value = place.name || ''; }
   $('bortleIn').value = bortle; $('netIn').checked = useNet;
+  if (!place) $('placeCard').open = true;
 }
 function savePlace(lat, lon, name) {
   if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) { $('saveMsg').textContent = 'Latitud entre −90 y 90 y longitud entre −180 y 180.'; return false; }
   place = { lat, lon, name: (name || '').slice(0, 40) }; store.set('place', place); return true;
 }
-function renderAll() { showPlace(); renderNight(); renderSky(); renderObjects(); renderWeather(); }
+function renderAll() {
+  showPlace(); renderNight(); renderSky(); renderObjects(); renderWeather();
+  if (typeof renderExtras === 'function') renderExtras();  // features.js: satélites, auroras, eventos, foto, bitácora…
+}
 function wire() {
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
     document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
@@ -284,7 +285,6 @@ function wire() {
     store.set('bortle', bortle); store.set('net', useNet);
     if (savePlace(lat, lon, $('nameIn').value)) { $('saveMsg').textContent = 'Guardado.'; refresh(true); }
   };
-  ['focIn', 'apIn', 'cropIn', 'pixIn'].forEach(id => $(id).oninput = renderExposure);
   $('objFilter').onchange = $('objVisible').onchange = renderObjects;
   window.addEventListener('resize', () => requestAnimationFrame(renderSky));
   skyInput();
