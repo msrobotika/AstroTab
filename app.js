@@ -1,4 +1,5 @@
-// AstroTab web (PWA para iPhone/iPad). Sin dependencias ni cuentas; la ubicación solo vive en este dispositivo.
+// AstroTab web (PWA para iPhone/iPad): estado, catálogos, Inicio, Noche, Objetos, Tiempo y Ajustes.
+// Sin cuentas ni telemetría: la ubicación vive en el dispositivo y solo se envía redondeada a Open-Meteo.
 'use strict';
 const $ = id => document.getElementById(id);
 const HOUR = 3600000;
@@ -7,35 +8,35 @@ const NAMES = {M1:'Nebulosa del Cangrejo',M6:'Mariposa',M7:'Cúmulo de Ptolomeo'
   M44:'Pesebre',M45:'Pléyades',M51:'Remolino',M57:'Anillo',M63:'Girasol',M64:'Ojo Negro',M73:'Asterismo de cuatro estrellas',M76:'Pequeña Mancuerna',
   M77:'Cetus A',M81:'Galaxia de Bode',M82:'Cigarro',M83:'Molinillo Austral',M87:'Virgo A',M94:'Ojo de Gato',M97:'Búho',M101:'Molinillo',M102:'Huso',M104:'Sombrero'};
 const TYPE = {gc:'Cúmulo globular',oc:'Cúmulo abierto',pn:'Nebulosa planetaria',snr:'Resto de supernova',sfr:'Región de formación estelar',
-  rn:'Nebulosa de reflexión',pos:'Agrupación aparente',s:'Galaxia',e:'Galaxia',i:'Galaxia'};
-const GROUP = t => ({s:'gx',e:'gx',i:'gx',snr:'neb',sfr:'neb',pn:'neb',rn:'neb',gc:'gc',oc:'oc'}[t] || '');
+  rn:'Nebulosa de reflexión',pos:'Agrupación aparente',s:'Galaxia espiral',e:'Galaxia elíptica',i:'Galaxia irregular'};
+const GROUP = t => ({s:'gx',e:'gx',i:'gx',snr:'neb',sfr:'neb',pn:'neb',rn:'neb',gc:'cl',oc:'cl'}[t] || '');
+const ICON = t => ({gx:'#i-obj',neb:'#i-nebula',cl:'#i-cluster'}[GROUP(t)] || '#i-cluster');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// ---------- Ajustes (solo localStorage; nada se envía salvo la consulta de nubes) ----------
+// ---------- Ajustes persistentes (localStorage, con fallo silencioso en modo privado) ----------
 const store = {
   get(k, def) { try { const v = localStorage.getItem('astrotab.' + k); return v === null ? def : JSON.parse(v); } catch { return def; } },
-  set(k, v) { try { localStorage.setItem('astrotab.' + k, JSON.stringify(v)); } catch { /* modo privado: sin persistencia */ } }
+  set(k, v) { try { localStorage.setItem('astrotab.' + k, JSON.stringify(v)); } catch { /* sin persistencia */ } }
 };
-let place = store.get('place', null);       // {lat, lon, name}
-let bortle = store.get('bortle', 5), useNet = store.get('net', true);
-let weather = store.get('weather', null);   // {key, fetched, hours:[...]}
-let stars = null, mw = null, messier = [];
+let place = store.get('place', null), bortle = store.get('bortle', 5), useNet = store.get('net', true);
+let weather = store.get('weather', null), stars = null, mw = null, messier = [];
 
-// ---------- Catálogos binarios (DataInputStream de Java: big-endian) ----------
+// ---------- Catálogos (formato DataInputStream de Java: big-endian) ----------
 function readStars(buf) {
-  const v = new DataView(buf); let o = 0;
+  const v = new DataView(buf); let o = 4;
   const u16 = () => { const x = v.getUint16(o); o += 2; return x; }, i16 = () => { const x = v.getInt16(o); o += 2; return x; };
   const u8 = () => v.getUint8(o++), i8 = () => v.getInt8(o++);
-  if (v.getUint32(0) !== 0x41544331) throw Error('Catálogo no reconocido'); o = 4;
+  if (v.getUint32(0) !== 0x41544331) throw Error('Catálogo no reconocido');
   const n = u16(), np = u16(), npoly = u16(), nlab = u16(), nname = u16(), ncon = u16();
-  const s = { n, ra: new Float32Array(n), dec: new Float32Array(n), mag: new Float32Array(n), bv: new Int8Array(n), name: new Uint8Array(n) };
-  for (let i = 0; i < n; i++) { s.ra[i] = u16() * 360 / 65536; s.dec[i] = i16() / 100; s.mag[i] = i8() / 10; s.bv[i] = i8(); u8(); s.name[i] = u8(); }
+  const s = { n, ra: new Float32Array(n), dec: new Float32Array(n), mag: new Float32Array(n), bv: new Int8Array(n), con: new Uint8Array(n), name: new Uint8Array(n) };
+  for (let i = 0; i < n; i++) { s.ra[i] = u16() * 360 / 65536; s.dec[i] = i16() / 100; s.mag[i] = i8() / 10; s.bv[i] = i8(); s.con[i] = u8(); s.name[i] = u8(); }
   s.pra = new Float32Array(np); s.pdec = new Float32Array(np);
   for (let i = 0; i < np; i++) { s.pra[i] = u16() * 360 / 65536; s.pdec[i] = i16() / 100; }
   s.polys = []; for (let i = 0; i < npoly; i++) s.polys.push([u8(), u16(), u8()]);
-  for (let i = 0; i < nlab; i++) { u16(); i16(); u8(); }
-  const dec = new TextDecoder(), text = () => { const len = u16(), t = dec.decode(new Uint8Array(buf, o, len)); o += len; return t; };
+  s.labels = []; for (let i = 0; i < nlab; i++) s.labels.push({ ra: u16() * 360 / 65536, dec: i16() / 100, rank: u8() });
+  const td = new TextDecoder(), text = () => { const len = u16(), t = td.decode(new Uint8Array(buf, o, len)); o += len; return t; };
   s.names = []; for (let i = 0; i < nname; i++) s.names.push(text());
-  for (let i = 0; i < ncon; i++) text();
+  s.cons = []; for (let i = 0; i < ncon; i++) s.cons.push(text().replace(/([a-záéíóúñ])([A-ZÁÉÍÓÚ])/g, '$1 $2'));  // «OsaMenor» → «Osa Menor»
   return s;
 }
 function readMilkyWay(buf) {
@@ -56,228 +57,247 @@ async function loadCatalogs() {
     return { id: p[0], ra: +p[1], dec: +p[2], type: p[3], mag: p[4] ? +p[4] : null, size: p[5], name: NAMES[p[0]] || '', ngc: p[8] }; });
 }
 
-// ---------- Utilidades de tiempo y astros ----------
+// ---------- Utilidades ----------
 const fmt = ms => ms == null ? '—' : new Date(ms).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 const fmtDay = ms => new Date(ms).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' });
+const fmtDM = ms => new Date(ms).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+const compass = az => ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(az / 45) % 8];
+const zoneName = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } };
 function horizonAt(ra, dec, ms) { return Astro.toHorizon(ra, dec, Astro.lst(ms, place.lon), place.lat); }
-// Noche que empieza esta tarde (o la actual si ya es de noche): de la puesta a la salida del Sol.
-function nightBounds(now) {
-  const alt = t => Astro.sunAlt(t, place);
-  const noon = new Date(now); noon.setHours(alt(now) < -0.833 && noon.getHours() < 12 ? -12 : 12, 0, 0, 0);
-  const set = Astro.nextCross(noon.getTime(), 24, -0.833, false, alt);
-  const rise = set ? Astro.nextCross(set, 24, -0.833, true, alt) : null;
-  const darkStart = Astro.nextCross(noon.getTime(), 24, -18, false, alt);
-  const darkEnd = darkStart ? Astro.nextCross(darkStart, 24, -18, true, alt) : null;
-  return { set, rise, darkStart, darkEnd, noon: noon.getTime() };
+let nightCache = null;
+function tonight() {  // Línea de la noche (de mediodía a mediodía), cacheada 10 min.
+  const key = placeKey();
+  if (!nightCache || nightCache.key !== key || Date.now() - nightCache.at > 10 * 60000)
+    nightCache = { key, at: Date.now(), night: Pro.AstroPhoto.timeline(Date.now(), place) };
+  return nightCache.night;
 }
-function hourFactors(t, cloud, w) {
+function canvas2d(c, h) {  // Lienzo nítido en pantallas retina.
+  const dpr = window.devicePixelRatio || 1, W = c.clientWidth || 300, H = h || c.clientHeight || +c.getAttribute('height') || 150;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H); return { g, W, H };
+}
+function hourFactors(t, w) {
   const sa = Astro.sunAlt(t, place), ma = Astro.moonAlt(t, place), ill = Astro.moonPhase(Astro.dayNumber(t)).illumination;
-  const dark = sa < -18 ? 1 : sa < -12 ? 0.5 : 0;
-  const moon = ma > 0 ? ill * (0.5 + 0.5 * Math.min(1, ma / 30)) : 0;
-  const dew = w && w.t != null && w.dp != null && w.t - w.dp < 3 ? 0.65 : 1;
-  const wind = !w || w.wind == null ? 1 : w.wind >= 30 ? 0.4 : w.wind >= 15 ? 0.7 : 1;
-  const rain = 1 - ((w && w.rain) || 0) / 100;
-  return { sa, ma, dark, moon, quality: cloud == null ? null : (1 - cloud / 100) * (1 - 0.8 * moon) * dark * dew * wind * rain };
+  const dark = sa < -18 ? 1 : sa < -12 ? 0.5 : 0, moon = ma > 0 ? ill * (0.5 + 0.5 * Math.min(1, ma / 30)) : 0;
+  const dew = w && w.t != null && w.dp != null && w.t - w.dp < 3 ? 0.65 : 1, wind = !w || w.wind == null ? 1 : w.wind >= 30 ? 0.4 : w.wind >= 15 ? 0.7 : 1;
+  return { sa, ma, dark, moon, quality: !w ? null : (1 - w.cover / 100) * (1 - 0.8 * moon) * dark * dew * wind * (1 - (w.rain || 0) / 100) };
 }
 
-// ---------- Nubes (Open-Meteo, sin clave; ubicación redondeada a 2 decimales) ----------
+// ---------- Tiempo (Open-Meteo, sin clave; ubicación redondeada a 2 decimales) ----------
 const placeKey = () => place ? place.lat.toFixed(2) + ',' + place.lon.toFixed(2) : '';
 async function fetchWeather(force) {
   if (!place || !useNet || !navigator.onLine) return;
   if (!force && weather && weather.key === placeKey() && Date.now() - weather.fetched < 2 * HOUR) return;
   const [la, lo] = placeKey().split(',');
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,temperature_2m,dew_point_2m,wind_speed_10m,wind_speed_250hPa&wind_speed_unit=kmh&timezone=UTC&forecast_days=7`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&hourly=cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,precipitation_probability,temperature_2m,dew_point_2m,relative_humidity_2m,wind_speed_10m,wind_gusts_10m,visibility,pressure_msl,wind_speed_250hPa&wind_speed_unit=kmh&timezone=UTC&forecast_days=7`;
   try {
     const r = await fetch(url); if (!r.ok) throw Error('HTTP ' + r.status);
-    const j = await r.json(), h = j.hourly;
-    weather = { key: placeKey(), fetched: Date.now(), hours: h.time.map((t, i) => ({ time: Date.parse(t + 'Z'), cover: h.cloud_cover[i],
-      low: h.cloud_cover_low[i], mid: h.cloud_cover_mid[i], high: h.cloud_cover_high[i], rain: h.precipitation_probability[i],
-      t: h.temperature_2m[i], dp: h.dew_point_2m[i], wind: h.wind_speed_10m[i], jet: h.wind_speed_250hPa ? h.wind_speed_250hPa[i] : null })) };
+    const h = (await r.json()).hourly, at = (k, i) => h[k] ? h[k][i] : null;
+    weather = { key: placeKey(), fetched: Date.now(), hours: h.time.map((t, i) => ({ time: Date.parse(t + 'Z'), cover: at('cloud_cover', i),
+      low: at('cloud_cover_low', i), mid: at('cloud_cover_mid', i), high: at('cloud_cover_high', i), rain: at('precipitation_probability', i),
+      t: at('temperature_2m', i), dp: at('dew_point_2m', i), hum: at('relative_humidity_2m', i), wind: at('wind_speed_10m', i),
+      gust: at('wind_gusts_10m', i), vis: at('visibility', i), pres: at('pressure_msl', i), jet: at('wind_speed_250hPa', i) })) };
     store.set('weather', weather);
-  } catch (e) { weather = weather && weather.key === placeKey() ? weather : null; $('wxStatus').textContent = 'Sin conexión con Open-Meteo: ' + e.message; }
+  } catch (e) { $('wxStatus').textContent = 'Sin conexión con Open-Meteo: ' + e.message; }
 }
-const wxAt = t => weather && weather.key === placeKey() ? weather.hours.find(h => t >= h.time && t < h.time + HOUR) : null;
+const wxRows = () => weather && weather.key === placeKey() ? weather.hours : null;
+const wxAt = t => { const r = wxRows(); return r ? r.find(h => t >= h.time && t < h.time + HOUR) : null; };
 
-// ---------- Pestaña NOCHE ----------
-function moonDraw(phase) {
-  const c = $('moonIcon'), g = c.getContext('2d'), r = 28, cx = 32, cy = 32;
-  g.clearRect(0, 0, 64, 64); g.fillStyle = '#1a2233'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
-  const k = Math.cos(phase.age * Math.PI / 180), waxing = phase.age < 180;
-  g.fillStyle = '#e8e2c8'; g.beginPath();
-  g.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, !waxing);
-  g.ellipse(cx, cy, Math.abs(k) * r, r, 0, Math.PI / 2, -Math.PI / 2, (k > 0) === waxing);
-  g.fill();
+// ---------- Cabecera y reloj ----------
+function tickClock() {
+  const now = new Date();
+  $('clockLine').textContent = `${now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} · ${zoneName()}`;
+  $('bigClock').textContent = now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const utc = now.toISOString().slice(11, 19);
+  let tsl = '';
+  if (place) { const l = Astro.lst(now.getTime(), place.lon) / 15, hh = Math.floor(l), mm = Math.floor((l - hh) * 60), ss = Math.floor(((l - hh) * 60 - mm) * 60);
+    tsl = ` · TSL ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`; }
+  $('utcLine').textContent = `UTC ${utc}${tsl}`;
+  $('dateLine').textContent = now.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
-function renderNight() {
-  if (!place) return;
-  const now = Date.now(), nb = nightBounds(now), d = Astro.dayNumber(now), ph = Astro.moonPhase(d);
-  const malt = t => Astro.moonAlt(t, place);
-  const moonUp = malt(now) > 0;
-  const mrise = Astro.nextCross(now - (moonUp ? 24 * HOUR : 0), 24, 0, true, malt), mset = Astro.nextCross(now, 24, 0, false, malt);
-  $('sunTimes').innerHTML = `<dt>Puesta</dt><dd>${fmt(nb.set)}</dd><dt>Noche cerrada</dt><dd>${fmt(nb.darkStart)}</dd>` +
-    `<dt>Fin de la noche</dt><dd>${fmt(nb.darkEnd)}</dd><dt>Salida</dt><dd>${fmt(nb.rise)}</dd>`;
-  $('moonTimes').innerHTML = `<dt>Fase</dt><dd>${Astro.phaseName(ph.age)}</dd><dt>Iluminada</dt><dd>${Math.round(ph.illumination * 100)} %</dd>` +
-    `<dt>${moonUp ? 'Salió' : 'Sale'}</dt><dd>${fmt(mrise)}</dd><dt>Se pone</dt><dd>${fmt(mset)}</dd>`;
-  moonDraw(ph);
-  // Nota de la noche: mejor ventana de 2 h con datos de nubes (fórmula de AstroTab Android).
-  const start = nb.set || nb.noon, end = nb.rise || start + 14 * HOUR, rows = [];
-  for (let t = Math.ceil(start / HOUR) * HOUR; t < end; t += HOUR) { const w = wxAt(t + HOUR / 2); rows.push({ t, ...hourFactors(t + HOUR / 2, w ? w.cover : null, w) }); }
-  let best = null;
-  for (let i = 0; i + 1 < rows.length; i++) {
-    const a = rows[i], b = rows[i + 1];
-    if (a.quality == null || b.quality == null || b.t + HOUR < now) continue;
-    const q = (a.quality + b.quality) / 2;
-    if (!best || q > best.q) best = { q, t: a.t };
-  }
-  const darkHours = rows.filter(r => r.dark === 1).length;
-  const sc = $('nightScore');
-  if (best) {
-    const score = Math.round(best.q * (1 - (bortle - 1) * 0.06) * 10);
-    sc.textContent = score; sc.className = 'score ' + (score >= 7 ? 'good' : score >= 4 ? 'mid' : 'bad');
-    $('nightTitle').textContent = `Nota de la noche: ${score}/10`;
-    $('nightSummary').textContent = darkHours ? `Mejor rato: ${fmt(best.t)}–${fmt(best.t + 2 * HOUR)}. ${darkHours} h de noche cerrada.` : 'Sin noche astronómica hoy.';
-  } else {
-    sc.textContent = '–'; sc.className = 'score';
-    $('nightTitle').textContent = 'Esta noche';
-    $('nightSummary').textContent = (useNet ? 'Sin previsión de nubes todavía. ' : 'Previsión de nubes desactivada. ') + `${darkHours} h de noche cerrada.`;
-  }
-  // Planetas: altura a media noche cerrada (o a la puesta del Sol + 2 h).
-  const mid = nb.darkStart && nb.darkEnd ? (nb.darkStart + nb.darkEnd) / 2 : start + 2 * HOUR, dm = Astro.dayNumber(mid);
-  $('planetList').innerHTML = Astro.PLANETS.map((n, p) => { const pl = Astro.planet(p, dm), h = horizonAt(pl.eq.ra, pl.eq.dec, mid);
-    return `<li><span>${n} <span class="tag">mag ${pl.mag.toFixed(1)}</span></span><span class="${h.alt > 10 ? 'good' : 'tag'}">${h.alt > 0 ? Math.round(h.alt) + '° · ' + compass(h.az) : 'bajo el horizonte'}</span></li>`; }).join('') +
-    `<li class="tag">Alturas a las ${fmt(mid)}</li>`;
-  const visible = messier.map(m => ({ m, h: horizonAt(m.ra, m.dec, now) })).filter(x => x.h.alt > 25 && x.m.mag != null && x.m.mag < 7.5)
-    .sort((a, b) => a.m.mag - b.m.mag).slice(0, 6);
-  $('bestObjects').innerHTML = Astro.sunAlt(now, place) > -12 ? '<li class="tag">Aún hay luz: vuelve cuando anochezca.</li>' :
-    visible.map(x => `<li><span>${x.m.id}${x.m.name ? ' · ' + x.m.name : ''}</span><span class="tag">${Math.round(x.h.alt)}° ${compass(x.h.az)}</span></li>`).join('') || '<li class="tag">Nada brillante alto ahora.</li>';
-}
-const compass = az => ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(az / 45) % 8];
-
-// ---------- Pestaña CIELO: proyección estereográfica, cénit en el centro, norte arriba ----------
-let skyTime = Date.now(), skyRot = 0, skyHits = [];
-function renderSky() {
-  if (!place || !stars) return;
-  const c = $('sky'), dpr = window.devicePixelRatio || 1, W = c.clientWidth;
-  if (W < 60) return;  // pestaña oculta: se dibuja al abrirla
-  if (c.width !== W * dpr) { c.width = W * dpr; c.height = W * dpr; }
-  const g = c.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const R = W / 2 - 14, cx = W / 2, cy = W / 2, lstv = Astro.lst(skyTime, place.lon), lat = place.lat, lim = Astro.limitingMag(bortle);
-  const proj = (ra, dec) => { const h = Astro.toHorizon(ra, dec, lstv, lat); if (h.alt < -1) return null;
-    const r = R * Math.tan((90 - h.alt) * Math.PI / 360) / Math.tan(Math.PI / 4), a = (h.az + skyRot) * Math.PI / 180;
-    return [cx - r * Math.sin(a), cy - r * Math.cos(a), h]; };
-  g.clearRect(0, 0, W, W);
-  g.fillStyle = '#060b18'; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill();
-  g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
-  g.fillStyle = 'rgba(160,180,230,0.05)';
-  for (const ring of mw) { g.beginPath(); let started = false;
-    for (const [ra, dec] of ring.pts) { const p = proj(ra, dec); if (!p) { started = false; continue; } started ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); started = true; }
-    g.fill(); }
-  if ($('showLines').checked) { g.strokeStyle = 'rgba(127,184,255,0.35)'; g.lineWidth = 1;
-    for (const [, first, n] of stars.polys) { g.beginPath(); let started = false;
-      for (let i = first; i < first + n; i++) { const p = proj(stars.pra[i], stars.pdec[i]); if (!p) { started = false; continue; } started ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); started = true; }
-      g.stroke(); } }
-  skyHits = [];
-  for (let i = 0; i < stars.n; i++) { const m = stars.mag[i]; if (m > lim) continue;
-    const p = proj(stars.ra[i], stars.dec[i]); if (!p) continue;
-    const bv = stars.bv[i] / 10, col = bv < 0 ? '#bcd4ff' : bv < 0.6 ? '#ffffff' : bv < 1.2 ? '#fff0c8' : '#ffc89a';
-    g.fillStyle = col; g.beginPath(); g.arc(p[0], p[1], Math.max(0.6, 3.4 - m * 0.55), 0, 7); g.fill();
-    if (stars.name[i] !== 255) skyHits.push({ x: p[0], y: p[1], label: stars.names[stars.name[i]], extra: `mag ${m.toFixed(1)} · ${Math.round(p[2].alt)}° ${compass(p[2].az)}` }); }
-  if ($('showMessier').checked) { g.strokeStyle = '#5fd38a';
-    for (const o of messier) { const p = proj(o.ra, o.dec); if (!p) continue; g.strokeRect(p[0] - 3, p[1] - 3, 6, 6);
-      skyHits.push({ x: p[0], y: p[1], label: o.id + (o.name ? ' · ' + o.name : ''), extra: `${TYPE[o.type] || ''} · ${Math.round(p[2].alt)}°` }); } }
-  const d = Astro.dayNumber(skyTime);
-  Astro.PLANETS.forEach((n, k) => { const pl = Astro.planet(k, d), p = proj(pl.eq.ra, pl.eq.dec); if (!p) return;
-    g.fillStyle = '#ffb020'; g.beginPath(); g.arc(p[0], p[1], 4, 0, 7); g.fill(); g.fillText(n, p[0] + 6, p[1] - 4);
-    skyHits.push({ x: p[0], y: p[1], label: n, extra: `mag ${pl.mag.toFixed(1)} · ${Math.round(p[2].alt)}°` }); });
-  const mo = Astro.moon(d).eq, pm = proj(mo.ra, mo.dec);
-  if (pm) { g.fillStyle = '#e8e2c8'; g.beginPath(); g.arc(pm[0], pm[1], 7, 0, 7); g.fill(); skyHits.push({ x: pm[0], y: pm[1], label: 'Luna', extra: `${Math.round(Astro.moonPhase(d).illumination * 100)} % · ${Math.round(pm[2].alt)}°` }); }
-  if (typeof drawSkyExtras === 'function') drawSkyExtras(g, proj, skyTime);  // features.js: búsqueda, encuadre, satélites
-  g.restore();
-  g.strokeStyle = '#253249'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
-  g.fillStyle = '#94a7c1'; g.font = '13px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  [['N', 0], ['E', 90], ['S', 180], ['O', 270]].forEach(([t, az]) => { const a = (az + skyRot) * Math.PI / 180; g.fillText(t, cx - (R + 8) * Math.sin(a), cy - (R + 8) * Math.cos(a)); });
-  g.textAlign = 'start';
-  const sa = Astro.sunAlt(skyTime, place);
-  $('skyTime').textContent = `${fmtDay(skyTime)} ${fmt(skyTime)} · Sol a ${Math.round(sa)}° · estrellas hasta magnitud ${lim} (Bortle ${bortle}). Arrastra para girar.`;
-}
-function skyInput() {
-  const c = $('sky'); let drag = null;
-  c.addEventListener('pointerdown', e => { drag = { x: e.clientX, rot: skyRot, moved: false }; c.setPointerCapture(e.pointerId); });
-  c.addEventListener('pointermove', e => { if (!drag) return; const dx = e.clientX - drag.x; if (Math.abs(dx) > 4) drag.moved = true;
-    skyRot = drag.rot - dx * 0.5; requestAnimationFrame(renderSky); });
-  c.addEventListener('pointerup', e => { if (drag && !drag.moved) { const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-      let best = null, bd = 22 * 22; for (const h of skyHits) { const dd = (h.x - x) ** 2 + (h.y - y) ** 2; if (dd < bd) { bd = dd; best = h; } }
-      $('skyInfo').textContent = best ? `${best.label} · ${best.extra}` : 'Nada aquí: toca más cerca de una estrella'; }
-    drag = null; });
-  $('timeMinus').onclick = () => { skyTime -= HOUR; renderSky(); };
-  $('timePlus').onclick = () => { skyTime += HOUR; renderSky(); };
-  $('timeNow').onclick = () => { skyTime = Date.now(); renderSky(); };
-  $('showLines').onchange = $('showMessier').onchange = renderSky;
-}
-
-// ---------- Pestaña OBJETOS ----------
-function renderObjects() {
-  if (!place) return;
-  const now = Date.now(), nb = nightBounds(now), from = nb.darkStart || nb.set || now, to = nb.darkEnd || nb.rise || from + 8 * HOUR;
-  const filter = $('objFilter').value, onlyVisible = $('objVisible').checked;
-  const rows = messier.filter(o => !filter || GROUP(o.type) === filter).map(o => {
-    let best = -90, bestT = from; for (let t = from; t <= to; t += 20 * 60000) { const a = horizonAt(o.ra, o.dec, t).alt; if (a > best) { best = a; bestT = t; } }
-    return { o, best, bestT, now: horizonAt(o.ra, o.dec, now) };
-  }).filter(r => !onlyVisible || r.best > 20).sort((a, b) => b.best - a.best);
-  $('objList').innerHTML = rows.map(r => `<li data-id="${r.o.id}" tabindex="0" role="button"><span><b>${r.o.id}</b>${r.o.name ? ' · ' + r.o.name : ''}<br><span class="tag">${TYPE[r.o.type] || ''} · mag ${r.o.mag ?? '—'} · ${r.o.ngc}</span></span>` +
-    `<span style="text-align:right"><span class="${r.best > 45 ? 'good' : r.best > 20 ? 'mid' : 'bad'}">${Math.round(r.best)}°</span> a las ${fmt(r.bestT)}<br>` +
-    `<span class="tag">ahora ${Math.round(r.now.alt)}° ${compass(r.now.az)}</span></span></li>`).join('') || '<li class="tag">Ningún objeto con esos filtros.</li>';
-}
-
-// ---------- Pestaña TIEMPO ----------
-function renderWeather() {
-  const tbl = $('wxTable');
-  if (!place) { $('wxStatus').textContent = 'Elige tu ubicación en Más.'; tbl.innerHTML = ''; return; }
-  if (!useNet) { $('wxStatus').textContent = 'Previsión desactivada en Más.'; tbl.innerHTML = ''; return; }
-  if (!weather || weather.key !== placeKey()) { $('wxStatus').textContent = 'Descargando previsión…'; tbl.innerHTML = ''; return; }
-  $('wxStatus').textContent = `Open-Meteo · actualizado a las ${fmt(weather.fetched)}`;
-  const now = Date.now() - HOUR, cls = v => v < 30 ? 'good' : v < 70 ? 'mid' : 'bad';
-  tbl.innerHTML = '<tr><th>Hora</th><th>Calidad</th><th>Nubes</th><th>Bajas</th><th>Medias</th><th>Altas</th><th>Lluvia</th><th>Rocío</th><th>Viento</th></tr>' +
-    weather.hours.filter(h => h.time >= now).slice(0, 48).map(h => { const f = hourFactors(h.time + HOUR / 2, h.cover, h);
-      const q = f.quality == null ? '—' : f.dark ? Math.round(f.quality * 10) : '·';
-      return `<tr class="${f.dark === 1 ? 'dark' : ''}"><td>${fmtDay(h.time)} ${fmt(h.time)}</td><td>${q}</td><td class="${cls(h.cover)}">${h.cover} %</td>` +
-        `<td>${h.low} %</td><td>${h.mid} %</td><td>${h.high} %</td><td>${h.rain ?? '—'} %</td><td class="${h.t - h.dp < 3 ? 'bad' : ''}">${h.t - h.dp < 3 ? 'alto' : 'bajo'}</td><td>${Math.round(h.wind)} km/h</td></tr>`; }).join('');
-}
-
-// ---------- Pestaña MÁS: exposición (regla 500 y NPF simplificada) ----------
-// La exposición depende del equipo: la calcula features.js con Optics (regla 500 y NPF de Android).
-function renderExposure() { if (typeof renderEquipment === 'function') renderEquipment(); }
-
-// ---------- Ubicación y arranque ----------
 function showPlace() {
-  $('placeLabel').textContent = place ? `${place.name || 'Mi ubicación'} · ${place.lat.toFixed(2)}°, ${place.lon.toFixed(2)}°` : 'Sin ubicación: ve a Más';
+  $('placeLine').textContent = place ? `${place.name || 'mi ubicación'} · ${place.lat.toFixed(2)}°, ${place.lon.toFixed(2)}°` : 'sin ubicación · ve a Ajustes';
   if (place) { $('latIn').value = place.lat; $('lonIn').value = place.lon; $('nameIn').value = place.name || ''; }
   $('bortleIn').value = bortle; $('netIn').checked = useNet;
-  if (!place) $('placeCard').open = true;
+}
+
+// ---------- INICIO ----------
+function moonGlyph(g, cx, cy, r, phase) {  // Fase lunar con terminador elíptico.
+  g.fillStyle = '#1d2638'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+  const k = Math.cos(phase.age * Math.PI / 180), waxing = phase.age < 180;
+  g.fillStyle = '#e8e2c8'; g.beginPath(); g.arc(cx, cy, r, -Math.PI / 2, Math.PI / 2, !waxing);
+  g.ellipse(cx, cy, Math.abs(k) * r, r, 0, Math.PI / 2, -Math.PI / 2, (k > 0) === waxing); g.fill();
+}
+function renderHome() {
+  if (!place) return;
+  const now = Date.now(), night = tonight(), d = Astro.dayNumber(now), ph = Astro.moonPhase(d);
+  // Nota de la noche y mejor noche de la semana.
+  let nights = []; try { nights = Pro.Forecast.week(now, place, wxRows(), useNet); } catch { nights = []; }
+  const first = nights[0], best = Pro.Forecast.best(nights), score = first && first.score != null ? first.score : null;
+  $('scoreNum').textContent = score == null ? '–' : score;
+  $('gArc').style.strokeDasharray = `${(score || 0) / 100 * 236} 400`;
+  $('gArc').style.stroke = score == null ? 'var(--panel2)' : score >= 60 ? 'var(--green)' : score >= 30 ? 'var(--amber)' : 'var(--red)';
+  $('scoreTitle').textContent = score == null ? 'Sin previsión' : score >= 60 ? 'Noche buena' : score >= 30 ? 'Noche regular' : 'Noche mala';
+  $('scoreTitle').className = 'big ' + (score == null ? '' : score >= 60 ? 'good' : score >= 30 ? 'mid' : 'bad');
+  $('scoreSub').textContent = first && first.clouds != null ? `Nubes ${Math.round(first.clouds)} % · ${first.darkHours.toFixed(1)} h de noche cerrada` : (useNet ? 'Descargando previsión…' : 'Previsión desactivada en Ajustes');
+  $('scoreBest').textContent = best ? `Mejor: ${fmtDay(best.start)} · ${best.score}/100` : '';
+  // Barra de la noche.
+  drawNightBar(night);
+  const set = night.samples.find((s, i) => i && night.samples[i - 1].sun >= -0.833 && s.sun < -0.833);
+  const rise = night.samples.find((s, i) => i && night.samples[i - 1].sun < -0.833 && s.sun >= -0.833);
+  $('tlSet').textContent = 'Atardecer ' + fmt(set && set.time); $('tlRise').textContent = 'Amanecer ' + fmt(rise && rise.time);
+  const sa = Astro.sunAlt(now, place);
+  $('tlNow').textContent = 'Ahora: ' + (sa > -0.833 ? (now < (set ? set.time : 0) ? 'antes del atardecer' : 'de día') : sa > -6 ? 'crepúsculo civil' : sa > -12 ? 'crepúsculo náutico' : sa > -18 ? 'crepúsculo astronómico' : 'noche cerrada');
+  // Tarjetas.
+  const malt = t => Astro.moonAlt(t, place), up = malt(now) > 0;
+  const mr = Astro.nextCross(now - (up ? 24 * HOUR : 0), 24, 0, true, malt), ms = Astro.nextCross(now, 24, 0, false, malt);
+  $('tMoon').innerHTML = `${Math.round(ph.illumination * 100)}<small> %</small>`; $('tMoonSub').textContent = `${Astro.phaseName(ph.age)} · ↑ ${fmt(mr)} ↓ ${fmt(ms)}`;
+  const dusk = night.samples.find((s, i) => i && night.samples[i - 1].sun >= -18 && s.sun < -18);
+  $('tSun').textContent = fmt(set && set.time); $('tSunSub').textContent = `↑ ${fmt(rise && rise.time)} · astro ${fmt(dusk && dusk.time)}`;
+  const w = wxAt(now);
+  $('tWx').innerHTML = w ? `${Math.round(w.t)}<small> °C</small>` : '—';
+  $('tWxSub').textContent = w ? `Rocío ${Math.round(w.t - w.dp)}° · ${Math.round(w.wind)} km/h · nubes ${w.cover} %` : (useNet ? 'Sin datos aún' : 'Previsión desactivada');
+  // Planetas visibles y evento destacado.
+  const vis = Pro.ProAstro.planets(night, place).filter(p => p.maximum > 5 && p.elongation > 12 && p.altitudes.some((a, i) => a > 5 && night.samples[i].sun < -6));
+  $('planetsTonight').textContent = vis.length ? vis.map(p => p.name).join(' · ') : 'Ninguno bien situado';
+  try { const ev = Pro.EventCalendar.month(now, place, typeof eclipseRows !== 'undefined' ? eclipseRows : []).find(e => e.time > now && e.highlighted);
+    $('eventTonight').textContent = ev ? `★ ${fmtDM(ev.time)} ${ev.title}` : ''; } catch { $('eventTonight').textContent = ''; }
+  // Mejores Messier.
+  const top = Pro.TargetChoice.diverse(messier.map(o => Pro.AstroPhoto.plan(o, night, place, 30)).filter(p => p.usefulHours > 0.5), 3);
+  $('bestMessier').innerHTML = top.map(p => `<button data-id="${p.target.id}"><svg class="ic"><use href="${ICON(p.target.type)}"/></svg><b>${p.target.id} · ${p.score}</b>${fmt(p.transit)}</button>`).join('') || '<span class="muted">Sin objetos con noche cerrada.</span>';
+  if (typeof renderHomeExtras === 'function') renderHomeExtras();
+}
+function drawNightBar(night) {
+  const { g, W, H } = canvas2d($('nightBar'), 26), n = night.samples.length, x = i => i / (n - 1) * W, now = Date.now();
+  night.samples.forEach((s, i) => {
+    const c = s.sun > -0.833 ? '#d38a2c' : s.sun > -6 ? '#7a6a9a' : s.sun > -12 ? '#3d4f86' : s.sun > -18 ? '#243457' : '#0b1222';
+    g.fillStyle = c; g.fillRect(x(i), 0, W / n + 1, 16);
+    if (s.moon > 0 && s.sun < -6) { g.fillStyle = `rgba(232,226,200,${0.25 + 0.6 * s.illumination})`; g.fillRect(x(i), 16, W / n + 1, 4); }
+    const w = wxAt(s.time); if (w) { g.fillStyle = `rgba(255,122,122,${w.cover / 110})`; g.fillRect(x(i), 21, W / n + 1, 5); }
+  });
+  if (now > night.start && now < night.end) { const xn = (now - night.start) / (night.end - night.start) * W; g.fillStyle = '#7fb8ff'; g.fillRect(xn - 1, 0, 2, H); }
+}
+
+// ---------- NOCHE ----------
+function renderNightTab() {
+  if (!place) return;
+  const night = tonight(), { g, W, H } = canvas2d($('nightChart'), 190), n = night.samples.length;
+  const x = i => i / (n - 1) * W, y = a => H - 18 - (Math.max(-20, a) + 20) / 110 * (H - 28);
+  night.samples.forEach((s, i) => { if (s.sun < -18) { g.fillStyle = '#121c33'; g.fillRect(x(i), 0, W / n + 1, H - 16); } });
+  g.strokeStyle = '#22304a'; g.lineWidth = 1; g.fillStyle = '#93a4bd'; g.font = '11px system-ui';
+  for (const a of [0, 30, 60, 90]) { g.beginPath(); g.moveTo(0, y(a)); g.lineTo(W, y(a)); g.stroke(); g.fillText(a + '°', 3, y(a) - 3); }
+  const line = (vals, color, w = 2) => { g.strokeStyle = color; g.lineWidth = w; g.beginPath(); vals.forEach((a, i) => i ? g.lineTo(x(i), y(a)) : g.moveTo(x(i), y(a))); g.stroke(); };
+  line(night.samples.map(s => s.sun), '#ffb020'); line(night.samples.map(s => s.moon), '#e8e2c8');
+  const gc = { ra: 266.405, dec: -28.936 }; line(night.samples.map(s => horizonAt(gc.ra, gc.dec, s.time).alt), '#b39dff', 1.5);
+  const cols = ['#c9b38f', '#fff2c4', '#ff8a65', '#ffd59a', '#e6cf8f'];
+  Pro.ProAstro.planets(night, place).forEach(p => line(p.altitudes, cols[p.index], 1));
+  for (let t = Math.ceil(night.start / (3 * HOUR)) * 3 * HOUR; t < night.end; t += 3 * HOUR) g.fillText(fmt(t), (t - night.start) / (night.end - night.start) * W - 14, H - 3);
+  $('nightHead').textContent = `La noche · ${fmtDM(night.start)} → ${fmtDM(night.end)}`;
+  $('nightEvents').innerHTML = Pro.AstroPhoto.events(night, place).map(e => `<li><span>${esc(e.label)}</span><span class="accent">${fmt(e.time)}</span></li>`).join('');
+  $('nightPlanets').innerHTML = Pro.ProAstro.planets(night, place).map(p => `<li><span>${p.name} <span class="tag">mag ${p.magnitude.toFixed(1)} · elong. ${Math.round(p.elongation)}°</span></span>` +
+    `<span class="tag">↑ ${fmt(p.rise)} · ${fmt(p.transit)} (${Math.round(p.maximum)}°) · ↓ ${fmt(p.set)}</span></li>`).join('');
+  const gal = Pro.AstroPhoto.galactic(night, place);
+  $('mwNight').innerHTML = gal.highest ? `Núcleo más alto a las <b>${fmt(gal.highest)}</b> (${Math.round(gal.altitude)}° ${compass(gal.azimuth)}).` : 'El núcleo galáctico no se ve esta noche con noche cerrada.';
+}
+
+// ---------- OBJETOS ----------
+let objGroup = '', objMin = store.get('objMin', 30);
+function spark(c, alts) {
+  const { g, W, H } = canvas2d(c, 40), n = alts.length;
+  g.strokeStyle = '#22304a'; g.beginPath(); g.moveTo(0, H - 2); g.lineTo(W, H - 2); g.stroke();
+  g.strokeStyle = '#7fb8ff'; g.lineWidth = 1.6; g.beginPath();
+  alts.forEach((a, i) => { const xx = i / (n - 1) * W, yy = H - 2 - Math.max(0, a) / 90 * (H - 4); i ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }); g.stroke();
+}
+function renderObjects() {
+  if (!place || !messier.length) return;
+  const night = tonight(), q = $('objSearch').value.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  const norm = s => (s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  const rows = messier.filter(o => (!objGroup || GROUP(o.type) === objGroup) &&
+      (!q || [o.id, o.id.slice(1), o.name, o.ngc].some(s => norm(s).includes(q))))
+    .map(o => Pro.AstroPhoto.plan(o, night, place, objMin)).sort((a, b) => b.score - a.score || b.usefulHours - a.usefulHours);
+  $('objCount').textContent = `${rows.length} objetos`;
+  $('objList').innerHTML = rows.map(p => { const o = p.target, lab = p.score >= 60 ? ['Buena', 'good'] : p.score >= 30 ? ['Media', 'mid'] : ['Baja', 'bad'];
+    return `<button class="obj" data-id="${o.id}"><svg class="ic"><use href="${ICON(o.type)}"/></svg><span><div class="oname">${o.id}${o.name ? ' · ' + esc(o.name) : ''}</div>` +
+      `<div class="osub">${esc(TYPE[o.type] || '')}${o.mag != null ? ' · mag ' + o.mag : ''}</div></span><canvas class="ospark" data-spark="${o.id}"></canvas>` +
+      `<span class="otime">${fmt(p.transit)}</span><span class="oscore ${lab[1]}">${p.score}</span><span class="badge ${lab[1]}">${lab[0]}</span></button>`; }).join('');
+  const byId = Object.fromEntries(rows.map(p => [p.target.id, p]));
+  $('objList').querySelectorAll('canvas[data-spark]').forEach(c => spark(c, byId[c.dataset.spark].miniAltitudes.filter((_, i) => i % 6 === 0)));
+}
+
+// ---------- TIEMPO ----------
+function renderWeather() {
+  const rows = wxRows();
+  if (!place) { $('wxStatus').textContent = 'Elige tu ubicación en Ajustes.'; return; }
+  if (!useNet) { $('wxStatus').textContent = 'Previsión desactivada en Ajustes.'; return; }
+  if (!rows) { $('wxStatus').textContent = 'Descargando previsión…'; return; }
+  $('wxStatus').textContent = `Open-Meteo · ${fmt(weather.fetched)}`;
+  const now = Date.now() - HOUR, data = rows.filter(h => h.time >= now).slice(0, 48);
+  if (!data.length) return;
+  // Nubes apiladas: bajas, medias y altas, con la noche sombreada.
+  const { g, W, H } = canvas2d($('cloudChart'), 200), n = data.length, x = i => i / (n - 1) * (W - 30) + 28, y = v => H - 22 - v / 100 * (H - 32);
+  data.forEach((h, i) => { if (Astro.sunAlt(h.time + HOUR / 2, place) < -12) { g.fillStyle = '#1a2440'; g.fillRect(x(i) - (W - 30) / n / 2, 6, (W - 30) / n + 1, H - 28); } });
+  g.fillStyle = '#93a4bd'; g.font = '11px system-ui'; g.strokeStyle = '#22304a';
+  for (const v of [0, 25, 50, 75, 100]) { g.beginPath(); g.moveTo(28, y(v)); g.lineTo(W, y(v)); g.stroke(); g.fillText(v, 2, y(v) + 4); }
+  const band = (lo, hi, color) => { g.fillStyle = color; g.beginPath();
+    data.forEach((h, i) => { const v = hi(h); i ? g.lineTo(x(i), y(v)) : g.moveTo(x(i), y(v)); });
+    for (let i = n - 1; i >= 0; i--) g.lineTo(x(i), y(lo(data[i]))); g.closePath(); g.fill(); };
+  const L = h => Math.min(100, h.low || 0), M = h => Math.min(100, L(h) + (h.mid || 0) * (1 - L(h) / 100)), T = h => Math.min(100, M(h) + (h.high || 0) * (1 - M(h) / 100));
+  band(() => 0, L, 'rgba(111,211,160,.85)'); band(L, M, 'rgba(255,176,32,.85)'); band(M, T, 'rgba(127,184,255,.75)');
+  for (let i = 0; i < n; i += 12) g.fillText(`${fmtDM(data[i].time)} ${fmt(data[i].time)}`, Math.min(W - 70, x(i) - 10), H - 4);
+  $('cloudChart').onclick = e => { const r = $('cloudChart').getBoundingClientRect(), i = Math.max(0, Math.min(n - 1, Math.round((e.clientX - r.left - 28) / (W - 30) * (n - 1))));
+    const h = data[i], q = hourFactors(h.time + HOUR / 2, h);
+    $('wxDetail').innerHTML = `<b>${fmtDay(h.time)} ${fmt(h.time)}</b> · calidad ${q.quality == null ? '—' : Math.round(q.quality * 100) + '/100'}<br>` +
+      `Nubes ${h.cover} % (bajas ${h.low}, medias ${h.mid}, altas ${h.high}) · lluvia ${h.rain ?? '—'} %<br>` +
+      `T ${h.t} °C · rocío ${h.dp} °C · HR ${h.hum ?? '—'} % · viento ${Math.round(h.wind)} km/h · rachas ${h.gust == null ? '—' : Math.round(h.gust)} km/h<br>` +
+      `Visibilidad ${h.vis == null ? '—' : Math.round(h.vis / 1000) + ' km'} · presión ${h.pres == null ? '—' : Math.round(h.pres) + ' hPa'} · 250 hPa ${h.jet == null ? '—' : Math.round(h.jet) + ' km/h'} · turbulencia ${Pro.Forecast.turbulence(h.jet)}`; };
+  // Temperatura y punto de rocío.
+  const t2 = canvas2d($('tempChart'), 140), vals = data.flatMap(h => [h.t, h.dp]).filter(v => v != null);
+  const lo = Math.floor(Math.min(...vals)) - 1, hi = Math.ceil(Math.max(...vals)) + 1, yy = v => t2.H - 18 - (v - lo) / (hi - lo) * (t2.H - 28);
+  t2.g.strokeStyle = '#22304a'; t2.g.fillStyle = '#93a4bd'; t2.g.font = '11px system-ui';
+  for (const v of [lo, Math.round((lo + hi) / 2), hi]) { t2.g.beginPath(); t2.g.moveTo(28, yy(v)); t2.g.lineTo(t2.W, yy(v)); t2.g.stroke(); t2.g.fillText(v, 2, yy(v) + 4); }
+  data.forEach((h, i) => { if (h.t != null && h.dp != null && h.t - h.dp < 3) { t2.g.fillStyle = 'rgba(255,122,122,.10)'; t2.g.fillRect(x(i) - (t2.W - 30) / n / 2, 6, (t2.W - 30) / n + 1, t2.H - 24); } });
+  const tl = (k, c) => { t2.g.strokeStyle = c; t2.g.lineWidth = 2; t2.g.beginPath(); data.forEach((h, i) => i ? t2.g.lineTo(x(i), yy(h[k])) : t2.g.moveTo(x(i), yy(h[k]))); t2.g.stroke(); };
+  tl('t', '#7fb8ff'); tl('dp', '#ffb020');
+  // 7 noches.
+  let nights = []; try { nights = Pro.Forecast.week(Date.now(), place, rows, useNet); } catch { nights = []; }
+  const best = Pro.Forecast.best(nights);
+  $('weekList').innerHTML = nights.map(nn => `<div class="${best && best.start === nn.start ? 'best' : ''}">${fmtDay(nn.start)}` +
+    `<b class="${nn.score == null ? '' : nn.score >= 60 ? 'good' : nn.score >= 30 ? 'mid' : 'bad'}">${nn.score == null ? '—' : nn.score}</b>` +
+    `nubes ${nn.clouds == null ? '—' : Math.round(nn.clouds) + ' %'}<br>Luna ${nn.moon == null ? '—' : Math.round(nn.moon * 100) + ' %'}</div>`).join('');
+}
+
+// ---------- Navegación, ajustes y arranque ----------
+function renderAll() {
+  showPlace(); tickClock();
+  if (!place || !stars) return;
+  renderHome(); renderNightTab(); renderObjects(); renderWeather();
+  if (typeof renderSky === 'function') renderSky();
+  if (typeof renderExtras === 'function') renderExtras();
+}
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x.dataset.tab === name));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + name));
+  store.set('tab', name);
+  if (name === 'cielo' && typeof renderSky === 'function') requestAnimationFrame(renderSky);
+  if (name === 'tiempo') requestAnimationFrame(renderWeather);
+  if (name === 'noche') requestAnimationFrame(renderNightTab);
+  if (name === 'inicio') requestAnimationFrame(renderHome);
+  if (name === 'objetos') requestAnimationFrame(renderObjects);
 }
 function savePlace(lat, lon, name) {
   if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) { $('saveMsg').textContent = 'Latitud entre −90 y 90 y longitud entre −180 y 180.'; return false; }
-  place = { lat, lon, name: (name || '').slice(0, 40) }; store.set('place', place); return true;
-}
-function renderAll() {
-  showPlace(); renderNight(); renderSky(); renderObjects(); renderWeather();
-  if (typeof renderExtras === 'function') renderExtras();  // features.js: satélites, auroras, eventos, foto, bitácora…
+  place = { lat, lon, name: (name || '').slice(0, 40) }; store.set('place', place); nightCache = null; return true;
 }
 function wire() {
-  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.id === 'tab-' + b.dataset.tab));
-    if (b.dataset.tab === 'cielo') requestAnimationFrame(renderSky);
-    store.set('tab', b.dataset.tab);
-  });
-  const red = store.get('red', false), setRed = on => { document.documentElement.classList.toggle('red', on); $('redBtn').setAttribute('aria-pressed', on); store.set('red', on); };
-  setRed(red); $('redBtn').onclick = () => setRed(!document.documentElement.classList.contains('red'));
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  const setRed = on => { document.documentElement.classList.toggle('red', on); $('redBtn').setAttribute('aria-pressed', on); store.set('red', on); };
+  setRed(store.get('red', false)); $('redBtn').onclick = () => setRed(!document.documentElement.classList.contains('red'));
   $('gpsBtn').onclick = () => {
     if (!navigator.geolocation) { $('saveMsg').textContent = 'Este navegador no da la ubicación: escríbela a mano.'; return; }
     $('saveMsg').textContent = 'Pidiendo ubicación…';
-    navigator.geolocation.getCurrentPosition(p => { savePlace(+p.coords.latitude.toFixed(4), +p.coords.longitude.toFixed(4), $('nameIn').value || 'Mi ubicación');
+    navigator.geolocation.getCurrentPosition(p => { savePlace(+p.coords.latitude.toFixed(4), +p.coords.longitude.toFixed(4), $('nameIn').value || 'mi ubicación');
       $('saveMsg').textContent = 'Ubicación guardada.'; refresh(true); },
-    e => { $('saveMsg').textContent = 'No se pudo obtener la ubicación (' + e.message + '). Escríbela a mano.'; }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+    e => { $('saveMsg').textContent = 'No se pudo obtener la ubicación (' + e.message + '). Escríbela a mano.'; }, { timeout: 15000, maximumAge: 600000 });
   };
   $('saveBtn').onclick = () => {
     const lat = parseFloat($('latIn').value.replace(',', '.')), lon = parseFloat($('lonIn').value.replace(',', '.'));
@@ -285,16 +305,21 @@ function wire() {
     store.set('bortle', bortle); store.set('net', useNet);
     if (savePlace(lat, lon, $('nameIn').value)) { $('saveMsg').textContent = 'Guardado.'; refresh(true); }
   };
-  $('objFilter').onchange = $('objVisible').onchange = renderObjects;
-  window.addEventListener('resize', () => requestAnimationFrame(renderSky));
-  skyInput();
-  const tab = store.get('tab', 'noche'); document.querySelector(`.tabs button[data-tab="${tab}"]`)?.click();
+  $('objSearch').oninput = renderObjects;
+  $('objChips').onclick = e => { const b = e.target.closest('button'); if (!b) return; objGroup = b.dataset.g;
+    $('objChips').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); renderObjects(); };
+  $('objMinBtn').onclick = () => { objMin = objMin === 30 ? 45 : objMin === 45 ? 15 : 30; store.set('objMin', objMin); $('objMin').textContent = objMin + '°'; renderObjects(); };
+  $('objMin').textContent = objMin + '°';
+  $('bestMessier').onclick = e => { const b = e.target.closest('button[data-id]'); if (b && typeof openObject === 'function') { showTab('objetos'); openObject(b.dataset.id); } };
+  $('objList').onclick = e => { const b = e.target.closest('button[data-id]'); if (b && typeof openObject === 'function') openObject(b.dataset.id); };
+  window.addEventListener('resize', () => requestAnimationFrame(() => { const t = store.get('tab', 'inicio'); showTab(t); }));
 }
 async function refresh(force) { renderAll(); await fetchWeather(force); renderAll(); }
 (async () => {
-  wire(); renderExposure(); showPlace();
-  try { await loadCatalogs(); } catch (e) { $('nightSummary').textContent = 'No se pudieron cargar los catálogos: ' + e.message; return; }
+  wire(); showPlace(); tickClock(); setInterval(tickClock, 1000);
+  try { await loadCatalogs(); } catch (e) { $('scoreSub').textContent = 'No se pudieron cargar los catálogos: ' + e.message; return; }
+  showTab(place ? store.get('tab', 'inicio') : 'ajustes');
   await refresh(false);
-  setInterval(() => { if (Math.abs(skyTime - Date.now()) < 2 * 60000) skyTime = Date.now(); renderAll(); }, 60000);
+  setInterval(() => { nightCache = null; renderAll(); }, 5 * 60000);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
