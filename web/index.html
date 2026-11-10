@@ -44,11 +44,19 @@
     <div class="skywrap"><canvas id="sky" aria-label="Mapa del cielo"></canvas></div>
     <div class="skyinfo" id="skyInfo" role="status">Toca una estrella, un planeta o un objeto Messier</div>
     <div class="controls">
+      <input id="skySearch" list="skyNames" placeholder="Buscar: Vega, M42, Júpiter…" aria-label="Buscar en el cielo">
+      <datalist id="skyNames"></datalist>
+      <button id="skyFind">Buscar</button>
+    </div>
+    <div class="controls">
       <button id="timeMinus">−1 h</button>
       <button id="timeNow">Ahora</button>
       <button id="timePlus">+1 h</button>
       <label class="chk"><input type="checkbox" id="showLines" checked> Líneas</label>
       <label class="chk"><input type="checkbox" id="showMessier" checked> Messier</label>
+      <label class="chk"><input type="checkbox" id="showFrame"> Encuadre de cámara</label>
+      <label class="chk"><input type="checkbox" id="showSats" checked> Satélites</label>
+      <button id="compassBtn">Brújula</button>
     </div>
     <p class="note" id="skyTime"></p>
   </section>
@@ -61,17 +69,26 @@
       </select>
       <label class="chk"><input type="checkbox" id="objVisible" checked> Solo visibles esta noche</label>
     </div>
+    <div class="card" id="objCard" hidden><h3 id="objTitle"></h3><canvas id="objChart" height="120"></canvas><dl id="objFacts"></dl>
+      <div class="controls"><label>Integración (min)<input id="objMinutes" type="number" min="1" max="720" value="60"></label>
+        <button id="objAdd" class="primary">Añadir a la sesión</button><button id="objClose">Cerrar</button></div></div>
+    <details class="card"><summary><h3>Plan de sesión</h3></summary><p class="muted" id="planHint">Toca un objeto y añádelo. El plan reparte la noche según su altura, la Luna y tu equipo.</p>
+      <ul id="planList" class="rows"></ul>
+      <div class="grid2"><label>Exposición por toma (s)<input id="planExp" type="number" value="60"></label><label>Pausa (s)<input id="planPause" type="number" value="5"></label></div>
+      <button id="planMake" class="wide primary">Calcular plan</button><button id="planClear" class="wide">Vaciar sesión</button>
+      <ul id="planOut" class="rows"></ul></details>
     <ul id="objList" class="rows big"></ul>
   </section>
 
   <section id="tab-tiempo" class="tab" aria-label="Tiempo para observar">
+    <div class="card"><h3>Las próximas 7 noches</h3><ul id="weekList" class="rows"></ul></div>
     <div class="card"><h3>Nubes y condiciones (48 h)</h3><p class="muted" id="wxStatus"></p>
       <div class="tablewrap"><table id="wxTable"></table></div></div>
     <p class="note">Calidad = cielo despejado × oscuridad × Luna × rocío × viento (la misma fórmula que AstroTab para Android).</p>
   </section>
 
   <section id="tab-mas" class="tab" aria-label="Herramientas y ajustes">
-    <div class="card"><h3>Ubicación</h3>
+    <details class="card" id="placeCard"><summary><h3>Ubicación</h3></summary>
       <p class="muted">Se guarda solo en este dispositivo. Para las nubes se envía a Open-Meteo redondeada (±1 km).</p>
       <button id="gpsBtn" class="wide">Usar mi ubicación</button>
       <div class="grid2">
@@ -83,16 +100,64 @@
       <label class="chk"><input type="checkbox" id="netIn" checked> Descargar previsión de nubes</label>
       <button id="saveBtn" class="wide primary">Guardar</button>
       <p class="muted" id="saveMsg"></p>
-    </div>
-    <div class="card"><h3>Exposición máxima sin trazas</h3>
+    </details>
+    <details class="card" open><summary><h3>Satélites</h3></summary>
+      <p class="muted" id="satStatus">Pasos visibles de la ISS y los satélites brillantes (CelesTrak).</p>
+      <div class="controls"><label class="chk"><input type="checkbox" id="satIss"> Solo la ISS</label>
+        <select id="satMin" aria-label="Altura mínima"><option value="10">≥ 10°</option><option value="20">≥ 20°</option><option value="30">≥ 30°</option></select>
+        <button id="satRefresh">Actualizar órbitas</button></div>
+      <ul id="satList" class="rows"></ul></details>
+
+    <details class="card"><summary><h3>Auroras</h3></summary><div id="auroraBox"></div>
+      <p class="note">Índice Kp de NOAA SWPC. El Kp no es una probabilidad de verlas: indica actividad geomagnética.</p></details>
+
+    <details class="card"><summary><h3>Eventos del mes</h3></summary><ul id="eventList" class="rows"></ul>
+      <h3>Lluvias de meteoros</h3><ul id="meteorList" class="rows"></ul></details>
+
+    <details class="card"><summary><h3>Calendario lunar</h3></summary><div id="moonCal" class="mooncal"></div></details>
+
+    <details class="card"><summary><h3>Equipo</h3></summary>
       <div class="grid2">
         <label>Focal (mm)<input id="focIn" type="number" value="24"></label>
         <label>Diafragma f/<input id="apIn" type="number" step="0.1" value="2.8"></label>
-        <label>Factor de recorte<input id="cropIn" type="number" step="0.1" value="1.5"></label>
+        <label>Sensor<select id="sensorIn"></select></label>
         <label>Píxel (µm)<input id="pixIn" type="number" step="0.1" value="3.9"></label>
       </div>
-      <p id="expOut" class="big"></p>
-    </div>
+      <label class="chk"><input type="checkbox" id="trackIn"> Montura con seguimiento</label>
+      <div class="controls"><select id="profileSel" aria-label="Perfiles guardados"></select><button id="profileLoad">Cargar</button>
+        <input id="profileName" placeholder="Nombre del perfil"><button id="profileSave">Guardar perfil</button></div>
+      <p id="expOut" class="big"></p></details>
+
+    <details class="card"><summary><h3>Herramientas de foto</h3></summary>
+      <h4>Reloj polar</h4><div class="moonrow"><canvas id="polarClock" width="140" height="140" aria-hidden="true"></canvas><p id="polarOut"></p></div>
+      <h4>Vía Láctea</h4><p id="mwOut"></p>
+      <h4>Hiperfocal</h4><label>Distancia de enfoque (m)<input id="focusDist" type="number" value="10"></label><p id="focusOut"></p>
+      <h4>Timelapse</h4><div class="grid2"><label>Intervalo (s)<input id="tlInt" type="number" value="20"></label><label>Duración (min)<input id="tlDur" type="number" value="120"></label>
+        <label>FPS del vídeo<input id="tlFps" type="number" value="25"></label><label>MB por foto<input id="tlMb" type="number" value="30"></label></div><p id="tlOut"></p>
+      <h4>Mosaico</h4><div class="grid2"><label>Zona a cubrir (°)<input id="mosCov" type="number" value="60"></label><label>Solape (%)<input id="mosOv" type="number" value="30"></label></div><p id="mosOut"></p>
+      <h4>Apilado</h4><div class="grid2"><label>Tomas<input id="stFrames" type="number" value="60"></label><label>Exposición (s)<input id="stExp" type="number" value="30"></label></div><p id="stOut"></p></details>
+
+    <details class="card"><summary><h3>Sesión con temporizador</h3></summary>
+      <div class="grid2"><label>Luces<input id="ssLights" type="number" value="30"></label><label>Exposición (s)<input id="ssExp" type="number" value="30"></label>
+        <label>Pausa (s)<input id="ssPause" type="number" value="5"></label><label>Darks<input id="ssDarks" type="number" value="0"></label></div>
+      <p class="muted">Te avisa con un pitido al empezar y terminar cada toma. No dispara la cámara. Mantén la app abierta: iOS no deja que una web suene en segundo plano.</p>
+      <div class="timer" id="ssShow">Listo</div>
+      <button id="ssStart" class="wide primary">Empezar</button><button id="ssStop" class="wide">Parar</button></details>
+
+    <details class="card"><summary><h3>Bitácora</h3></summary>
+      <div class="grid2"><label>Objeto<input id="lbTarget" placeholder="M31"></label><label>Tomas<input id="lbFrames" type="number" value="30"></label>
+        <label>Exposición (s)<input id="lbExp" type="number" value="30"></label><label>Equipo<input id="lbEquip" placeholder="24 mm f/2.8"></label></div>
+      <label>Notas<input id="lbNotes" placeholder="Cielo, seeing, incidencias"></label>
+      <button id="lbAdd" class="wide primary">Añadir a la bitácora</button><button id="lbExport" class="wide">Exportar CSV</button>
+      <ul id="lbList" class="rows"></ul></details>
+
+    <details class="card"><summary><h3>Alarmas</h3></summary>
+      <p class="muted">Suenan con la app abierta (iOS no permite alarmas de una web en segundo plano).</p>
+      <div class="controls"><select id="alKind"><option value="ASTRONOMICAL_DUSK">Noche cerrada</option><option value="MOONRISE">Salida de la Luna</option>
+        <option value="ISS">Paso de la ISS (5 min antes)</option><option value="KP">Kp suficiente para auroras</option></select><button id="alAdd">Añadir</button></div>
+      <ul id="alList" class="rows"></ul></details>
+
+    <details class="card"><summary><h3>Linterna roja</h3></summary><button id="torchBtn" class="wide">Encender linterna roja</button></details>
     <div class="card"><h3>Instalar en el iPhone o iPad</h3>
       <p>En Safari: botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abre a pantalla completa y funciona sin conexión.</p>
       <p class="muted">AstroTab · MS Robotika · gratis y de código abierto (MIT). <a href="https://github.com/msrobotika/AstroTab">Código en GitHub</a>.</p>
@@ -107,7 +172,12 @@
   <button data-tab="tiempo">Tiempo</button>
   <button data-tab="mas">Más</button>
 </nav>
+<div id="torch" hidden><input id="torchLevel" type="range" min="10" max="100" value="60" aria-label="Brillo de la linterna"><button id="torchOff">Apagar</button></div>
 <script src="astro.js"></script>
+<script src="vendor/satellite.min.js"></script>
+<script src="pro.js"></script>
+<script src="sats.js"></script>
 <script src="app.js"></script>
+<script src="features.js"></script>
 </body>
 </html>

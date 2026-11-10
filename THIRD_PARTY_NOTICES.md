@@ -104,3 +104,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## satellite.js 5.0.0 (solo versión web)
+
+Copyright (C) 2013 Shashwat Kandadai, UCSC Jack Baskin School of Engineering. Licencia MIT, texto completo en `web/vendor/satellite.LICENSE`. Propagación SGP4/SDP4 de los TLE en el navegador.

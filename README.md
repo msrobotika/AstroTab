@@ -32,7 +32,9 @@ Capturas reales de la pantalla de una Alcatel Pixi 4 7" (Android 6) con AstroTab
 
 ## iPhone y iPad (versión web)
 
-Abre **https://msrobotika.github.io/AstroTab/** en Safari y pulsa **Compartir → Añadir a pantalla de inicio**: se instala con su icono, a pantalla completa y funciona sin conexión. Incluye la noche (Sol, Luna, nota de la noche, planetas), el mapa del cielo con 5044 estrellas y los 110 Messier, la lista de objetos, las nubes de 48 h (Open-Meteo), el cálculo de exposición y el modo rojo. Es una versión reducida de la app de Android: no tiene satélites, auroras, alarmas ni bitácora. Código en [`web/`](web/); prueba del motor: `node web/test/astro.test.js`.
+Abre **https://msrobotika.github.io/AstroTab/** en Safari y pulsa **Compartir → Añadir a pantalla de inicio**: se instala con su icono, a pantalla completa y funciona sin conexión. Tiene lo mismo que la app de Android: noche y nota de la noche, mapa del cielo con búsqueda, encuadre de cámara y brújula, 110 Messier con ficha y plan de sesión, 48 h y 7 noches de tiempo, satélites (SGP4 en el dispositivo), auroras (Kp de NOAA), eventos, meteoros y calendario lunar, reloj polar, Vía Láctea, hiperfocal, timelapse, mosaico, apilado, sesión con temporizador, bitácora exportable, alarmas, perfiles de equipo, linterna roja y modo rojo.
+
+Límites de iOS: las alarmas y el temporizador suenan solo con la app abierta, y no hay modo kiosco ni pantalla de inicio. La lógica de `core/` está traducida a JavaScript en [`web/pro.js`](web/pro.js); SGP4 usa [satellite.js](https://github.com/shashwatak/satellite-js) 5.0.0 (MIT) en [`web/vendor/`](web/vendor/). Pruebas: `node web/test/astro.test.js` y `node web/test/pro.test.js`.
 
 ## Requisitos
 
