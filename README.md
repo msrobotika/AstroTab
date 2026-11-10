@@ -30,6 +30,10 @@ Capturas reales de la pantalla de una Alcatel Pixi 4 7" (Android 6) con AstroTab
 ![Plan: distribución de objetivos durante la noche](docs/img/plan.png)
 ![Modo rojo: interfaz para preservar la adaptación a la oscuridad](docs/img/rojo.png)
 
+## iPhone y iPad (versión web)
+
+Abre **https://msrobotika.github.io/AstroTab/** en Safari y pulsa **Compartir → Añadir a pantalla de inicio**: se instala con su icono, a pantalla completa y funciona sin conexión. Incluye la noche (Sol, Luna, nota de la noche, planetas), el mapa del cielo con 5044 estrellas y los 110 Messier, la lista de objetos, las nubes de 48 h (Open-Meteo), el cálculo de exposición y el modo rojo. Es una versión reducida de la app de Android: no tiene satélites, auroras, alarmas ni bitácora. Código en [`web/`](web/); prueba del motor: `node web/test/astro.test.js`.
+
 ## Requisitos
 
 Android **6.0 o posterior** (API 23), pantalla preferentemente horizontal. Probado en una **Alcatel Pixi 4 7 pulgadas, modelo 8063, con 1 GB de RAM** (unos 30 MB de memoria en uso). El modo rojo nocturno en el campo, el sensor de inclinación y las alarmas con la tablet en reposo aún no se han probado de noche.

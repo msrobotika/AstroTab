@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AstroTab</title>
+<meta name="description" content="Asistente de astrofotografía y observación: noche, mapa del cielo, objetos Messier, nubes y modo rojo. Gratis y abierto.">
+<meta name="theme-color" content="#05070f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="AstroTab">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">AstroTab</div>
+  <div class="place" id="placeLabel">Sin ubicación</div>
+  <button class="icon" id="redBtn" aria-pressed="false" aria-label="Modo rojo">●</button>
+</header>
+
+<main>
+  <section id="tab-noche" class="tab active" aria-label="Esta noche">
+    <div class="card hero">
+      <div class="score" id="nightScore">–</div>
+      <div>
+        <h2 id="nightTitle">Esta noche</h2>
+        <p id="nightSummary" class="muted">Elige tu ubicación en Más → Ubicación.</p>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h3>Sol</h3><dl id="sunTimes"></dl></div>
+      <div class="card"><h3>Luna</h3><div class="moonrow"><canvas id="moonIcon" width="64" height="64" aria-hidden="true"></canvas><dl id="moonTimes"></dl></div></div>
+    </div>
+    <div class="card"><h3>Planetas esta noche</h3><ul id="planetList" class="rows"></ul></div>
+    <div class="card"><h3>Mejores objetos ahora</h3><ul id="bestObjects" class="rows"></ul></div>
+    <p class="note">Cálculos aproximados para orientarse (método de Schlyter). Las nubes vienen de Open-Meteo y pueden fallar: mira el cielo.</p>
+  </section>
+
+  <section id="tab-cielo" class="tab" aria-label="Mapa del cielo">
+    <div class="skywrap"><canvas id="sky" aria-label="Mapa del cielo"></canvas></div>
+    <div class="skyinfo" id="skyInfo" role="status">Toca una estrella, un planeta o un objeto Messier</div>
+    <div class="controls">
+      <button id="timeMinus">−1 h</button>
+      <button id="timeNow">Ahora</button>
+      <button id="timePlus">+1 h</button>
+      <label class="chk"><input type="checkbox" id="showLines" checked> Líneas</label>
+      <label class="chk"><input type="checkbox" id="showMessier" checked> Messier</label>
+    </div>
+    <p class="note" id="skyTime"></p>
+  </section>
+
+  <section id="tab-objetos" class="tab" aria-label="Objetos">
+    <div class="controls">
+      <select id="objFilter" aria-label="Tipo de objeto">
+        <option value="">Todos</option><option value="gc">Cúmulos globulares</option><option value="oc">Cúmulos abiertos</option>
+        <option value="gx">Galaxias</option><option value="neb">Nebulosas</option>
+      </select>
+      <label class="chk"><input type="checkbox" id="objVisible" checked> Solo visibles esta noche</label>
+    </div>
+    <ul id="objList" class="rows big"></ul>
+  </section>
+
+  <section id="tab-tiempo" class="tab" aria-label="Tiempo para observar">
+    <div class="card"><h3>Nubes y condiciones (48 h)</h3><p class="muted" id="wxStatus"></p>
+      <div class="tablewrap"><table id="wxTable"></table></div></div>
+    <p class="note">Calidad = cielo despejado × oscuridad × Luna × rocío × viento (la misma fórmula que AstroTab para Android).</p>
+  </section>
+
+  <section id="tab-mas" class="tab" aria-label="Herramientas y ajustes">
+    <div class="card"><h3>Ubicación</h3>
+      <p class="muted">Se guarda solo en este dispositivo. Para las nubes se envía a Open-Meteo redondeada (±1 km).</p>
+      <button id="gpsBtn" class="wide">Usar mi ubicación</button>
+      <div class="grid2">
+        <label>Latitud<input id="latIn" inputmode="decimal" placeholder="40.42"></label>
+        <label>Longitud<input id="lonIn" inputmode="decimal" placeholder="-3.70"></label>
+      </div>
+      <label>Nombre<input id="nameIn" placeholder="Mi sitio"></label>
+      <label>Contaminación lumínica (Bortle 1–9)<input id="bortleIn" type="number" min="1" max="9" value="5"></label>
+      <label class="chk"><input type="checkbox" id="netIn" checked> Descargar previsión de nubes</label>
+      <button id="saveBtn" class="wide primary">Guardar</button>
+      <p class="muted" id="saveMsg"></p>
+    </div>
+    <div class="card"><h3>Exposición máxima sin trazas</h3>
+      <div class="grid2">
+        <label>Focal (mm)<input id="focIn" type="number" value="24"></label>
+        <label>Diafragma f/<input id="apIn" type="number" step="0.1" value="2.8"></label>
+        <label>Factor de recorte<input id="cropIn" type="number" step="0.1" value="1.5"></label>
+        <label>Píxel (µm)<input id="pixIn" type="number" step="0.1" value="3.9"></label>
+      </div>
+      <p id="expOut" class="big"></p>
+    </div>
+    <div class="card"><h3>Instalar en el iPhone o iPad</h3>
+      <p>En Safari: botón <b>Compartir</b> → <b>Añadir a pantalla de inicio</b>. Se abre a pantalla completa y funciona sin conexión.</p>
+      <p class="muted">AstroTab · MS Robotika · gratis y de código abierto (MIT). <a href="https://github.com/msrobotika/AstroTab">Código en GitHub</a>.</p>
+    </div>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Secciones">
+  <button data-tab="noche" class="active">Noche</button>
+  <button data-tab="cielo">Cielo</button>
+  <button data-tab="objetos">Objetos</button>
+  <button data-tab="tiempo">Tiempo</button>
+  <button data-tab="mas">Más</button>
+</nav>
+<script src="astro.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
